@@ -8,6 +8,7 @@ import { ActivityCard } from '@/components/ActivityCard'
 import { Leaderboard } from '@/components/Leaderboard'
 import { CountryFilter } from '@/components/CountryFilter'
 import type { ActivityWithProfile, LeaderboardEntry, Profile } from '@/types/database'
+import type { RealtimePostgresChangesPayload } from '@supabase/supabase-js'
 
 interface ActivityRow {
   id: string
@@ -205,12 +206,16 @@ export function ActivityFeed() {
           schema: 'public',
           table: 'activities',
         },
-        () => {
+        (payload: RealtimePostgresChangesPayload<ActivityRow>) => {
+          console.log('[Realtime] Change received:', payload)
           fetchActivities()
           calculateLeaderboard()
         }
       )
-      .subscribe()
+      .subscribe((status, err) => {
+        console.log('[Realtime] Subscription status:', status)
+        if (err) console.error('[Realtime] Error:', err)
+      })
 
     return () => {
       supabase.removeChannel(channel)

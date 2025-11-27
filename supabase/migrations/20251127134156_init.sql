@@ -539,4 +539,5 @@ CREATE TRIGGER update_profiles_updated_at BEFORE UPDATE ON public.profiles FOR E
 
 CREATE TRIGGER update_social_connections_updated_at BEFORE UPDATE ON public.social_connections FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 
-
+-- Enable Realtime for activities table
+ALTER PUBLICATION supabase_realtime ADD TABLE public.activities;
