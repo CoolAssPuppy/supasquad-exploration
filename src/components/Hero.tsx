@@ -25,26 +25,28 @@ export function Hero() {
         <div className="flex flex-col lg:flex-row items-start lg:items-center gap-12 lg:gap-24">
           {/* Left side - Text content */}
           <div className="flex-1 max-w-2xl">
-            <h1 className="text-5xl sm:text-6xl lg:text-7xl font-bold tracking-tight">
+            <span className="block font-mono uppercase text-[var(--brand)] mb-4">
+              SupaSquad assemble!
+            </span>
+            <h1 className="text-3xl md:text-4xl lg:text-4xl 2xl:text-5xl font-bold tracking-[-0.15px]">
               <span className="text-[var(--foreground)]">Build the Supabase</span>
               <br />
               <span className="text-[var(--brand)]">community.</span>
             </h1>
 
-            <p className="mt-6 text-xl text-[var(--foreground-light)] leading-relaxed">
+            <p className="mt-4 text-lg text-[var(--foreground-light)] max-w-lg">
               Earn prizes and recognition by contributing to the Supabase ecosystem.
               Report your activities, climb the leaderboard, and connect with fellow advocates.
             </p>
 
-            <div className="mt-10 flex flex-wrap items-center gap-4">
+            <div className="mt-8 flex flex-row items-center gap-2">
               <Button
-                size="large"
                 onClick={signIn}
                 isLoading={isLoading}
                 className="gap-2"
               >
                 <svg
-                  className="w-5 h-5"
+                  className="w-4 h-4"
                   viewBox="0 0 109 113"
                   fill="none"
                   xmlns="http://www.w3.org/2000/svg"
@@ -93,15 +95,11 @@ export function Hero() {
                 href="https://supabase.com/community"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center justify-center px-6 py-3 text-base font-medium rounded-md border-2 border-white text-white bg-transparent hover:bg-white/10 transition-colors"
+                className="relative inline-flex items-center justify-center px-4 py-2 text-sm h-[38px] rounded-md font-medium transition-all duration-200 ease-out bg-transparent hover:bg-[var(--surface-200)] text-[var(--foreground)] border border-[var(--border-strong)] hover:border-[var(--foreground-muted)]"
               >
                 Apply to join the SupaSquad
               </a>
             </div>
-
-            <p className="mt-4 text-sm text-[var(--foreground-lighter)]">
-              Join the SupaSquad and start earning points today.
-            </p>
           </div>
 
           <div className="flex-shrink-0">
