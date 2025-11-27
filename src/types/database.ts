@@ -9,6 +9,76 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
+      pending_activities: {
+        Row: {
+          id: string
+          user_id: string
+          provider: string
+          provider_activity_id: string | null
+          activity_type: Database["public"]["Enums"]["activity_type"]
+          title: string
+          description: string | null
+          url: string | null
+          event_name: string | null
+          event_date: string | null
+          location: string | null
+          attendee_count: number | null
+          platform: string | null
+          answer_count: number | null
+          suggested_points: number
+          status: string
+          ingested_at: string | null
+          created_at: string | null
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          provider: string
+          provider_activity_id?: string | null
+          activity_type: Database["public"]["Enums"]["activity_type"]
+          title: string
+          description?: string | null
+          url?: string | null
+          event_name?: string | null
+          event_date?: string | null
+          location?: string | null
+          attendee_count?: number | null
+          platform?: string | null
+          answer_count?: number | null
+          suggested_points: number
+          status?: string
+          ingested_at?: string | null
+          created_at?: string | null
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          provider?: string
+          provider_activity_id?: string | null
+          activity_type?: Database["public"]["Enums"]["activity_type"]
+          title?: string
+          description?: string | null
+          url?: string | null
+          event_name?: string | null
+          event_date?: string | null
+          location?: string | null
+          attendee_count?: number | null
+          platform?: string | null
+          answer_count?: number | null
+          suggested_points?: number
+          status?: string
+          ingested_at?: string | null
+          created_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pending_activities_user_id_fkey"
+            columns: ["user_id"]
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       activities: {
         Row: {
           activity_type: Database["public"]["Enums"]["activity_type"]
@@ -196,6 +266,10 @@ export type ActivityUpdate = Database['public']['Tables']['activities']['Update'
 
 export type SocialConnection = Database['public']['Tables']['social_connections']['Row']
 export type SocialConnectionInsert = Database['public']['Tables']['social_connections']['Insert']
+
+export type PendingActivity = Database['public']['Tables']['pending_activities']['Row']
+export type PendingActivityInsert = Database['public']['Tables']['pending_activities']['Insert']
+export type PendingActivityUpdate = Database['public']['Tables']['pending_activities']['Update']
 
 export type ActivityTypeEnum = Database['public']['Enums']['activity_type']
 

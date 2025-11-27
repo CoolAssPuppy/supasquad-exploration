@@ -7,6 +7,7 @@ import type { Profile } from '@/types/database'
 
 // Mock user for development - will be replaced with real Supabase auth
 const MOCK_USER_EMAIL = 'prashant_sridharan@hotmail.com'
+const MOCK_USER_ID = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'
 
 interface AuthContextType {
   user: User | null
@@ -46,7 +47,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setIsMockAuth(true)
             // Create a mock user object
             const mockUser = {
-              id: 'mock-user-id',
+              id: MOCK_USER_ID,
               email: MOCK_USER_EMAIL,
               created_at: new Date().toISOString(),
               app_metadata: {},
@@ -54,18 +55,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               aud: 'authenticated',
             } as User
             setUser(mockUser)
-            // Create mock profile
-            setProfile({
-              id: 'mock-user-id',
-              email: MOCK_USER_EMAIL,
-              first_name: 'Prashant',
-              last_name: 'Sridharan',
-              avatar_url: null,
-              city: null,
-              country: null,
-              created_at: new Date().toISOString(),
-              updated_at: new Date().toISOString(),
-            })
+            // Fetch real profile from database
+            await fetchProfile(MOCK_USER_ID)
           }
         }
       } catch (error) {
@@ -121,7 +112,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Mock authentication
       localStorage.setItem('supasquad_mock_auth', 'true')
       const mockUser = {
-        id: 'mock-user-id',
+        id: MOCK_USER_ID,
         email: MOCK_USER_EMAIL,
         created_at: new Date().toISOString(),
         app_metadata: {},
@@ -130,17 +121,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } as User
       setUser(mockUser)
       setIsMockAuth(true)
-      setProfile({
-        id: 'mock-user-id',
-        email: MOCK_USER_EMAIL,
-        first_name: 'Prashant',
-        last_name: 'Sridharan',
-        avatar_url: null,
-        city: null,
-        country: null,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      })
+      // Fetch real profile from database
+      await fetchProfile(MOCK_USER_ID)
     } finally {
       setIsLoading(false)
     }

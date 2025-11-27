@@ -14,21 +14,52 @@ import {
   type ActivityType,
 } from '@/lib/constants/activityPoints'
 
-export function ActivityForm() {
+export interface ActivityFormInitialValues {
+  activityType?: ActivityType
+  title?: string
+  description?: string
+  url?: string
+  eventName?: string
+  eventDate?: string
+  location?: string
+  attendeeCount?: string
+  platform?: string
+  answerCount?: string
+}
+
+interface ActivityFormProps {
+  initialValues?: ActivityFormInitialValues
+  onSuccess?: () => void
+  onCancel?: () => void
+  compact?: boolean
+  submitLabel?: string
+  header?: string
+  subheader?: string
+}
+
+export function ActivityForm({
+  initialValues,
+  onSuccess,
+  onCancel,
+  compact = false,
+  submitLabel,
+  header = 'Manual submission',
+  subheader,
+}: ActivityFormProps = {}) {
   const router = useRouter()
   const { user, isMockAuth } = useAuth()
   const supabase = createClient()
 
-  const [activityType, setActivityType] = useState<ActivityType>('blog_post')
-  const [title, setTitle] = useState('')
-  const [description, setDescription] = useState('')
-  const [url, setUrl] = useState('')
-  const [eventName, setEventName] = useState('')
-  const [eventDate, setEventDate] = useState('')
-  const [location, setLocation] = useState('')
-  const [attendeeCount, setAttendeeCount] = useState('')
-  const [platform, setPlatform] = useState('')
-  const [answerCount, setAnswerCount] = useState('')
+  const [activityType, setActivityType] = useState<ActivityType>(initialValues?.activityType || 'blog_post')
+  const [title, setTitle] = useState(initialValues?.title || '')
+  const [description, setDescription] = useState(initialValues?.description || '')
+  const [url, setUrl] = useState(initialValues?.url || '')
+  const [eventName, setEventName] = useState(initialValues?.eventName || '')
+  const [eventDate, setEventDate] = useState(initialValues?.eventDate || '')
+  const [location, setLocation] = useState(initialValues?.location || '')
+  const [attendeeCount, setAttendeeCount] = useState(initialValues?.attendeeCount || '')
+  const [platform, setPlatform] = useState(initialValues?.platform || '')
+  const [answerCount, setAnswerCount] = useState(initialValues?.answerCount || '')
   const [requestAmplification, setRequestAmplification] = useState(false)
   const [amplificationUrl, setAmplificationUrl] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -69,8 +100,12 @@ export function ActivityForm() {
       if (isMockAuth) {
         // For mock auth, just simulate success
         console.log('Mock activity submission:', activityData)
-        alert('Activity submitted successfully! (Mock mode)')
-        router.push('/feed')
+        if (onSuccess) {
+          onSuccess()
+        } else {
+          alert('Activity submitted successfully! (Mock mode)')
+          router.push('/feed')
+        }
         return
       }
 
@@ -80,8 +115,12 @@ export function ActivityForm() {
 
       if (insertError) throw insertError
 
-      router.push('/feed')
-      router.refresh()
+      if (onSuccess) {
+        onSuccess()
+      } else {
+        router.push('/feed')
+        router.refresh()
+      }
     } catch (err) {
       console.error('Error submitting activity:', err)
       setError(err instanceof Error ? err.message : 'Failed to submit activity')
@@ -105,9 +144,9 @@ export function ActivityForm() {
   return (
     <Card>
       <CardHeader>
-        <h2 className="font-semibold text-[var(--foreground)]">Manual submission</h2>
+        <h2 className="font-semibold text-[var(--foreground)]">{header}</h2>
         <p className="text-sm text-[var(--foreground-lighter)]">
-          {selectedActivity?.description}
+          {subheader || selectedActivity?.description}
         </p>
       </CardHeader>
       <CardContent>
@@ -326,9 +365,14 @@ export function ActivityForm() {
           )}
 
           {/* Submit button */}
-          <div className="pt-2">
-            <Button type="submit" isLoading={isSubmitting} className="w-full">
-              Submit activity (+{getActivityPoints(activityType)} pts)
+          <div className={`pt-2 ${onCancel ? 'flex gap-2' : ''}`}>
+            {onCancel && (
+              <Button type="button" variant="outline" onClick={onCancel} className="flex-1">
+                Cancel
+              </Button>
+            )}
+            <Button type="submit" isLoading={isSubmitting} className={onCancel ? 'flex-1' : 'w-full'}>
+              {submitLabel || `Submit activity (+${getActivityPoints(activityType)} pts)`}
             </Button>
           </div>
         </form>

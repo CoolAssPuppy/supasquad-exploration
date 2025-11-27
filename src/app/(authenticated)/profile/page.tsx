@@ -4,6 +4,8 @@ import { useState, useMemo, useCallback, useEffect } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { ProfileForm } from '@/components/ProfileForm'
 import { SocialButtons } from '@/components/SocialButtons'
+import { ProfileCharts } from '@/components/ProfileCharts'
+import { Card, CardHeader, CardContent } from '@/components/ui/Card'
 
 export default function ProfilePage() {
   const searchParams = useSearchParams()
@@ -43,7 +45,7 @@ export default function ProfilePage() {
   }, [notification, dismissNotification])
 
   return (
-    <div className="max-w-2xl">
+    <div>
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-[var(--foreground)]">
           Profile settings
@@ -68,9 +70,25 @@ export default function ProfilePage() {
         </div>
       )}
 
-      <div className="space-y-6">
-        <ProfileForm />
-        <SocialButtons />
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
+        {/* Left column: Profile settings */}
+        <div className="space-y-6">
+          <ProfileForm />
+          <SocialButtons />
+        </div>
+
+        {/* Right column: Charts */}
+        <Card>
+          <CardHeader>
+            <h2 className="font-semibold text-[var(--foreground)]">Your activity</h2>
+            <p className="text-sm text-[var(--foreground-lighter)]">
+              Track your contributions over time
+            </p>
+          </CardHeader>
+          <CardContent>
+            <ProfileCharts />
+          </CardContent>
+        </Card>
       </div>
     </div>
   )

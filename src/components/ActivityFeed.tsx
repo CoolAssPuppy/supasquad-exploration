@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { createClient } from '@/utils/supabase/client'
 import { useAuth } from '@/lib/auth/AuthContext'
 import { useFeedFilters } from '@/lib/feed/FeedContext'
@@ -38,12 +38,12 @@ function getDateFilter(period: '7d' | '30d' | 'all'): Date | null {
 }
 
 export function ActivityFeed() {
-  const { user, isMockAuth } = useAuth()
+  const { user } = useAuth()
   const { filters, setTimePeriod, setAvailableCountries } = useFeedFilters()
   const supabase = createClient()
   const [activities, setActivities] = useState<ActivityWithProfile[]>([])
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+  const [isInitialLoading, setIsInitialLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   const fetchCountries = useCallback(async () => {
@@ -59,7 +59,7 @@ export function ActivityFeed() {
   }, [supabase, setAvailableCountries])
 
   const fetchActivities = useCallback(async () => {
-    let query = supabase
+    const query = supabase
       .from('activities')
       .select(`
         *,
@@ -75,11 +75,7 @@ export function ActivityFeed() {
       .order('created_at', { ascending: false })
       .limit(50)
 
-    // Apply time filter
-    const dateFilter = getDateFilter(filters.timePeriod)
-    if (dateFilter) {
-      query = query.gte('created_at', dateFilter.toISOString())
-    }
+    // Feed shows all recent activities (no time filter - that's only for leaderboard)
 
     const { data, error: fetchError } = await query
 
@@ -99,7 +95,7 @@ export function ActivityFeed() {
     }
 
     setActivities(filteredData)
-  }, [supabase, filters.timePeriod, filters.selectedCountries])
+  }, [supabase, filters.selectedCountries])
 
   const calculateLeaderboard = useCallback(async () => {
     let query = supabase
@@ -186,39 +182,21 @@ export function ActivityFeed() {
     setLeaderboard(sorted)
   }, [supabase, filters.timePeriod, filters.selectedCountries])
 
-  const fetchAll = useCallback(async () => {
-    setIsLoading(true)
-    setError(null)
-    await Promise.all([fetchActivities(), calculateLeaderboard()])
-    setIsLoading(false)
-  }, [fetchActivities, calculateLeaderboard])
-
   // Fetch countries on mount
   useEffect(() => {
-    if (!isMockAuth) {
-      fetchCountries()
-    }
-  }, [isMockAuth, fetchCountries])
+    fetchCountries()
+  }, [fetchCountries])
 
-  // Handle mock auth state
-  const mockAuthInitialized = useMemo(() => {
-    if (isMockAuth) {
-      return { activities: [] as ActivityWithProfile[], leaderboard: [] as LeaderboardEntry[], isLoading: false }
-    }
-    return null
-  }, [isMockAuth])
-
-  // Fetch data when filters change
+  // Initial fetch and Realtime subscription
   useEffect(() => {
-    if (mockAuthInitialized) {
-      return
+    const initialFetch = async () => {
+      setError(null)
+      await Promise.all([fetchActivities(), calculateLeaderboard()])
+      setIsInitialLoading(false)
     }
+    initialFetch()
 
-    // Initial fetch - this is a valid data fetching pattern
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    fetchAll()
-
-    // Set up Realtime subscription
+    // Set up Realtime subscription for new activities
     const channel = supabase
       .channel('activities-realtime')
       .on<ActivityRow>(
@@ -230,7 +208,8 @@ export function ActivityFeed() {
         },
         (payload: RealtimePostgresChangesPayload<ActivityRow>) => {
           console.log('Realtime update:', payload)
-          fetchAll()
+          fetchActivities()
+          calculateLeaderboard()
         }
       )
       .subscribe()
@@ -238,14 +217,32 @@ export function ActivityFeed() {
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [supabase, mockAuthInitialized, fetchAll])
+    // Only run on mount - individual effects handle filter changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [supabase])
 
-  // Use mock data if in mock auth mode
-  const displayActivities = mockAuthInitialized?.activities ?? activities
-  const displayLeaderboard = mockAuthInitialized?.leaderboard ?? leaderboard
-  const displayIsLoading = mockAuthInitialized?.isLoading ?? isLoading
+  // Re-fetch activities when country filter changes (not on initial mount)
+  const isInitialMount = useRef(true)
+  useEffect(() => {
+    if (isInitialMount.current) {
+      isInitialMount.current = false
+      return
+    }
+    fetchActivities()
+    calculateLeaderboard()
+  }, [filters.selectedCountries, fetchActivities, calculateLeaderboard])
 
-  if (displayIsLoading) {
+  // Re-calculate leaderboard when time period changes (not activities)
+  const isTimePeriodInitialMount = useRef(true)
+  useEffect(() => {
+    if (isTimePeriodInitialMount.current) {
+      isTimePeriodInitialMount.current = false
+      return
+    }
+    calculateLeaderboard()
+  }, [filters.timePeriod, calculateLeaderboard])
+
+  if (isInitialLoading) {
     return (
       <div className="space-y-6">
         <div className="flex items-center justify-between">
@@ -291,7 +288,7 @@ export function ActivityFeed() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Activity Feed - 2/3 width on large screens */}
         <div className="lg:col-span-2 space-y-4">
-          {displayActivities.length === 0 ? (
+          {activities.length === 0 ? (
             <div className="text-center py-12 text-[var(--foreground-lighter)]">
               <p className="text-lg">No activities yet</p>
               <p className="mt-2 text-sm">
@@ -301,7 +298,7 @@ export function ActivityFeed() {
               </p>
             </div>
           ) : (
-            displayActivities.map((activity) => (
+            activities.map((activity) => (
               <ActivityCard key={activity.id} activity={activity} />
             ))
           )}
@@ -310,7 +307,7 @@ export function ActivityFeed() {
         {/* Leaderboard - 1/3 width on large screens */}
         <div className="lg:col-span-1">
           <Leaderboard
-            entries={displayLeaderboard}
+            entries={leaderboard}
             currentUserId={user?.id}
             timePeriod={filters.timePeriod}
             onTimePeriodChange={setTimePeriod}

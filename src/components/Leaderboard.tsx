@@ -1,5 +1,6 @@
 'use client'
 
+import { motion, AnimatePresence, LayoutGroup } from 'framer-motion'
 import { Card, CardHeader, CardContent } from '@/components/ui/Card'
 import { Avatar } from '@/components/ui/Avatar'
 import type { LeaderboardEntry } from '@/types/database'
@@ -71,6 +72,7 @@ export function Leaderboard({ entries, currentUserId, timePeriod, onTimePeriodCh
           {TIME_PERIODS.map((period) => (
             <button
               key={period.value}
+              type="button"
               onClick={() => onTimePeriodChange(period.value)}
               className={`
                 flex-1 px-3 py-1.5 text-xs font-medium rounded-md transition-colors
@@ -87,66 +89,82 @@ export function Leaderboard({ entries, currentUserId, timePeriod, onTimePeriodCh
         </div>
       </CardHeader>
       <CardContent className="p-0">
-        <div className="divide-y divide-[var(--border)]">
-          {entries.length === 0 ? (
-            <div className="p-4 text-center text-[var(--foreground-lighter)]">
-              No activities yet. Be the first!
-            </div>
-          ) : (
-            entries.map((entry) => {
-              const isCurrentUser = entry.user_id === currentUserId
-              const displayName = entry.first_name
-                ? `${entry.first_name} ${entry.last_name || ''}`
-                : entry.email.split('@')[0]
+        <LayoutGroup>
+          <div className="divide-y divide-[var(--border)]">
+            {entries.length === 0 ? (
+              <div className="p-4 text-center text-[var(--foreground-lighter)]">
+                No activities yet. Be the first!
+              </div>
+            ) : (
+              <AnimatePresence mode="popLayout">
+                {entries.map((entry) => {
+                  const isCurrentUser = entry.user_id === currentUserId
+                  const displayName = entry.first_name
+                    ? `${entry.first_name} ${entry.last_name || ''}`
+                    : entry.email.split('@')[0]
 
-              return (
-                <div
-                  key={entry.user_id}
-                  className={`
-                    flex items-center gap-3 p-4
-                    ${isCurrentUser ? 'bg-[var(--brand)]/5' : ''}
-                  `}
-                >
-                  {/* Rank */}
-                  <span
-                    className={`
-                      w-8 font-bold text-sm
-                      ${getRankStyle(entry.rank)}
-                    `}
-                  >
-                    {getRankIcon(entry.rank)}
-                  </span>
-
-                  {/* Avatar */}
-                  <Avatar
-                    src={entry.avatar_url}
-                    alt={displayName}
-                    fallback={displayName}
-                    size="sm"
-                  />
-
-                  {/* Name */}
-                  <div className="flex-1 min-w-0">
-                    <p
+                  return (
+                    <motion.div
+                      key={entry.user_id}
+                      layout
+                      initial={{ opacity: 0, y: -10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: 10 }}
+                      transition={{
+                        layout: { type: 'spring', stiffness: 500, damping: 30 },
+                        opacity: { duration: 0.2 },
+                      }}
                       className={`
-                        text-sm font-medium truncate
-                        ${isCurrentUser ? 'text-[var(--brand)]' : 'text-[var(--foreground)]'}
+                        flex items-center gap-3 p-4
+                        ${isCurrentUser ? 'bg-[var(--brand)]/5' : ''}
                       `}
                     >
-                      {displayName}
-                      {isCurrentUser && ' (you)'}
-                    </p>
-                  </div>
+                      {/* Rank */}
+                      <motion.span
+                        layout="position"
+                        className={`
+                          w-8 font-bold text-sm
+                          ${getRankStyle(entry.rank)}
+                        `}
+                      >
+                        {getRankIcon(entry.rank)}
+                      </motion.span>
 
-                  {/* Points */}
-                  <span className="text-sm font-medium text-[var(--foreground-light)]">
-                    {entry.total_points.toLocaleString()} pts
-                  </span>
-                </div>
-              )
-            })
-          )}
-        </div>
+                      {/* Avatar */}
+                      <Avatar
+                        src={entry.avatar_url}
+                        alt={displayName}
+                        fallback={displayName}
+                        size="sm"
+                      />
+
+                      {/* Name */}
+                      <div className="flex-1 min-w-0">
+                        <p
+                          className={`
+                            text-sm font-medium truncate
+                            ${isCurrentUser ? 'text-[var(--brand)]' : 'text-[var(--foreground)]'}
+                          `}
+                        >
+                          {displayName}
+                          {isCurrentUser && ' (you)'}
+                        </p>
+                      </div>
+
+                      {/* Points */}
+                      <motion.span
+                        layout="position"
+                        className="text-sm font-medium text-[var(--foreground-light)]"
+                      >
+                        {entry.total_points.toLocaleString()} pts
+                      </motion.span>
+                    </motion.div>
+                  )
+                })}
+              </AnimatePresence>
+            )}
+          </div>
+        </LayoutGroup>
       </CardContent>
     </Card>
   )

@@ -4,7 +4,7 @@ import { ACTIVITY_TYPES } from '@/lib/constants/activityPoints'
 
 export default function ProgramPage() {
   return (
-    <div className="max-w-4xl mx-auto">
+    <div>
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-[var(--foreground)]">
           SupaSquad Program

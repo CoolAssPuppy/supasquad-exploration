@@ -59,6 +59,7 @@ schema_paths = [
   "./schemas/02_social_connections.sql",
   "./schemas/03_activities.sql",
   "./schemas/04_functions.sql",
+  "./schemas/05_pending_activities.sql",
 ]
 
 [db.seed]

@@ -4,96 +4,115 @@ import { useState, useEffect, useCallback } from 'react'
 import { Card, CardHeader, CardContent } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
+import { ActivityForm, type ActivityFormInitialValues } from '@/components/ActivityForm'
 import { createClient } from '@/utils/supabase/client'
 import { useAuth } from '@/lib/auth/AuthContext'
 import { formatRelativeTime } from '@/lib/utils/formatDate'
-import type { SocialConnection } from '@/types/database'
-
-interface PendingContribution {
-  id: string
-  provider: string
-  type: string
-  title: string
-  description?: string
-  url?: string
-  created_at: string
-  points: number
-}
-
-// Mock data for demonstration - in production this would come from edge functions
-const MOCK_CONTRIBUTIONS: PendingContribution[] = []
+import { getActivityLabel, type ActivityType } from '@/lib/constants/activityPoints'
+import type { PendingActivity, SocialConnection } from '@/types/database'
 
 export function AutomaticFeed() {
   const { user, isMockAuth } = useAuth()
   const supabase = createClient()
-  const [contributions, setContributions] = useState<PendingContribution[]>([])
+  const [pendingActivities, setPendingActivities] = useState<PendingActivity[]>([])
   const [declinedIds, setDeclinedIds] = useState<Set<string>>(new Set())
-  const [approving, setApproving] = useState<string | null>(null)
+  const [editingId, setEditingId] = useState<string | null>(null)
   const [connections, setConnections] = useState<SocialConnection[]>([])
   const [isLoading, setIsLoading] = useState(true)
 
-  const fetchConnections = useCallback(async () => {
-    if (!user || isMockAuth) {
+  const fetchData = useCallback(async () => {
+    if (!user) {
       setIsLoading(false)
       return
     }
 
-    const { data } = await supabase
-      .from('social_connections')
-      .select('*')
-      .eq('user_id', user.id)
+    try {
+      // Fetch connections and pending activities in parallel
+      const [connectionsResult, pendingResult] = await Promise.all([
+        supabase.from('social_connections').select('*').eq('user_id', user.id),
+        supabase
+          .from('pending_activities')
+          .select('*')
+          .eq('user_id', user.id)
+          .eq('status', 'pending')
+          .order('ingested_at', { ascending: false }),
+      ])
 
-    setConnections(data || [])
-    setIsLoading(false)
-  }, [user, isMockAuth, supabase])
+      setConnections(connectionsResult.data || [])
+      setPendingActivities(pendingResult.data || [])
+    } catch (error) {
+      console.error('Error fetching data:', error)
+    } finally {
+      setIsLoading(false)
+    }
+  }, [user, supabase])
 
   useEffect(() => {
-    fetchConnections()
-    // In production, also fetch pending contributions from edge function
-    setContributions(MOCK_CONTRIBUTIONS)
-  }, [fetchConnections])
+    fetchData()
+  }, [fetchData])
 
-  const handleApprove = async (contribution: PendingContribution) => {
-    setApproving(contribution.id)
+  const handleApprove = async (activity: PendingActivity) => {
+    // Show the inline edit form
+    setEditingId(activity.id)
+  }
 
-    // Remove from declined if it was there
-    setDeclinedIds((prev) => {
-      const next = new Set(prev)
-      next.delete(contribution.id)
-      return next
-    })
+  const handleApproveSubmit = async (activityId: string) => {
+    if (!user || isMockAuth) {
+      // For mock, just remove from list
+      setPendingActivities((prev) => prev.filter((a) => a.id !== activityId))
+      setEditingId(null)
+      return
+    }
 
     try {
-      // In production, this would create an activity record
-      if (!isMockAuth && user) {
-        // await supabase.from('activities').insert({ ... })
-      }
+      // Mark the pending activity as approved
+      await supabase
+        .from('pending_activities')
+        .update({ status: 'approved' })
+        .eq('id', activityId)
 
-      // Remove from list after approval
-      setContributions((prev) => prev.filter((c) => c.id !== contribution.id))
+      // Remove from local state
+      setPendingActivities((prev) => prev.filter((a) => a.id !== activityId))
+      setEditingId(null)
     } catch (error) {
-      console.error('Error approving contribution:', error)
-    } finally {
-      setApproving(null)
+      console.error('Error approving activity:', error)
     }
   }
 
-  const handleDecline = (contributionId: string) => {
-    setDeclinedIds((prev) => new Set(prev).add(contributionId))
+  const handleDecline = async (activityId: string) => {
+    setDeclinedIds((prev) => new Set(prev).add(activityId))
+
+    if (!isMockAuth && user) {
+      // Mark as declined in the database
+      await supabase
+        .from('pending_activities')
+        .update({ status: 'declined' })
+        .eq('id', activityId)
+    }
   }
 
-  const handleUndoDecline = (contributionId: string) => {
+  const handleUndoDecline = async (activityId: string) => {
     setDeclinedIds((prev) => {
       const next = new Set(prev)
-      next.delete(contributionId)
+      next.delete(activityId)
       return next
     })
+
+    if (!isMockAuth && user) {
+      // Revert to pending in the database
+      await supabase
+        .from('pending_activities')
+        .update({ status: 'pending' })
+        .eq('id', activityId)
+    }
+  }
+
+  const handleCancelEdit = () => {
+    setEditingId(null)
   }
 
   const hasConnections = connections.length > 0
-  const visibleContributions = contributions.filter(
-    (c) => !declinedIds.has(c.id)
-  )
+  const visibleActivities = pendingActivities.filter((a) => !declinedIds.has(a.id))
 
   const getProviderIcon = (provider: string) => {
     switch (provider) {
@@ -121,6 +140,21 @@ export function AutomaticFeed() {
             <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z" />
           </svg>
         )
+    }
+  }
+
+  const getInitialValuesForActivity = (activity: PendingActivity): ActivityFormInitialValues => {
+    return {
+      activityType: activity.activity_type as ActivityType,
+      title: activity.title,
+      description: activity.description || '',
+      url: activity.url || '',
+      eventName: activity.event_name || '',
+      eventDate: activity.event_date || '',
+      location: activity.location || '',
+      attendeeCount: activity.attendee_count?.toString() || '',
+      platform: activity.platform || '',
+      answerCount: activity.answer_count?.toString() || '',
     }
   }
 
@@ -180,7 +214,7 @@ export function AutomaticFeed() {
               Connect services
             </Button>
           </div>
-        ) : visibleContributions.length === 0 ? (
+        ) : visibleActivities.length === 0 ? (
           // Empty state - connected but no pending contributions
           <div className="text-center py-8">
             <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-[var(--surface-200)] mb-4">
@@ -207,13 +241,29 @@ export function AutomaticFeed() {
         ) : (
           // List of pending contributions
           <div className="space-y-3">
-            {contributions.map((contribution) => {
-              const isDeclined = declinedIds.has(contribution.id)
-              const isApproving = approving === contribution.id
+            {pendingActivities.map((activity) => {
+              const isDeclined = declinedIds.has(activity.id)
+              const isEditing = editingId === activity.id
+
+              if (isEditing) {
+                const providerName = activity.provider.charAt(0).toUpperCase() + activity.provider.slice(1)
+                return (
+                  <div key={activity.id} className="border border-[var(--brand)] rounded-lg">
+                    <ActivityForm
+                      initialValues={getInitialValuesForActivity(activity)}
+                      onSuccess={() => handleApproveSubmit(activity.id)}
+                      onCancel={handleCancelEdit}
+                      submitLabel={`Approve (+${activity.suggested_points} pts)`}
+                      header={`Ingested from ${providerName}`}
+                      subheader="Review and edit the details before approving this activity"
+                    />
+                  </div>
+                )
+              }
 
               return (
                 <div
-                  key={contribution.id}
+                  key={activity.id}
                   className={`
                     flex items-start gap-3 p-3 rounded-lg border transition-all
                     ${
@@ -225,29 +275,29 @@ export function AutomaticFeed() {
                 >
                   {/* Provider icon */}
                   <div className="flex-shrink-0 mt-0.5 text-[var(--foreground-lighter)]">
-                    {getProviderIcon(contribution.provider)}
+                    {getProviderIcon(activity.provider)}
                   </div>
 
                   {/* Content */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
                       <Badge variant="default" className="text-xs">
-                        {contribution.type}
+                        {getActivityLabel(activity.activity_type as ActivityType)}
                       </Badge>
                       <span className="text-xs text-[var(--foreground-lighter)]">
-                        {formatRelativeTime(contribution.created_at)}
+                        {formatRelativeTime(activity.ingested_at || activity.created_at || '')}
                       </span>
                     </div>
                     <p className={`text-sm font-medium ${isDeclined ? 'line-through' : ''} text-[var(--foreground)]`}>
-                      {contribution.title}
+                      {activity.title}
                     </p>
-                    {contribution.description && (
+                    {activity.description && (
                       <p className="text-xs text-[var(--foreground-lighter)] mt-1 line-clamp-2">
-                        {contribution.description}
+                        {activity.description}
                       </p>
                     )}
                     <p className="text-xs text-[var(--brand)] mt-1">
-                      +{contribution.points} pts
+                      +{activity.suggested_points} pts
                     </p>
                   </div>
 
@@ -257,31 +307,23 @@ export function AutomaticFeed() {
                       <Button
                         variant="text"
                         size="tiny"
-                        onClick={() => handleUndoDecline(contribution.id)}
+                        onClick={() => handleUndoDecline(activity.id)}
                       >
                         Undo
                       </Button>
                     ) : (
                       <>
                         <button
-                          onClick={() => handleApprove(contribution)}
-                          disabled={isApproving}
-                          className="p-1.5 rounded-md text-[var(--brand)] hover:bg-[var(--brand)]/10 transition-colors disabled:opacity-50"
-                          title="Approve"
+                          onClick={() => handleApprove(activity)}
+                          className="p-1.5 rounded-md text-[var(--brand)] hover:bg-[var(--brand)]/10 transition-colors"
+                          title="Review and approve"
                         >
-                          {isApproving ? (
-                            <svg className="w-5 h-5 animate-spin" viewBox="0 0 24 24" fill="none">
-                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                            </svg>
-                          ) : (
-                            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <polyline points="20 6 9 17 4 12" />
-                            </svg>
-                          )}
+                          <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <polyline points="20 6 9 17 4 12" />
+                          </svg>
                         </button>
                         <button
-                          onClick={() => handleDecline(contribution.id)}
+                          onClick={() => handleDecline(activity.id)}
                           className="p-1.5 rounded-md text-[var(--foreground-lighter)] hover:text-[var(--destructive)] hover:bg-[var(--destructive)]/10 transition-colors"
                           title="Decline"
                         >
