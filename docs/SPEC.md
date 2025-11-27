@@ -229,7 +229,7 @@ src/
 ## Mock authentication
 
 For initial development, use a mock authentication flow:
-- Hardcoded user: prashant_sridharan@hotmail.com
+- Hardcoded user: dev@supasquad.local
 - Login button sets authenticated state in context
 - Real Supabase OAuth will be implemented later
 

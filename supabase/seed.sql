@@ -25,7 +25,7 @@ VALUES
   ('12121212-1212-1212-1212-121212121212', 'kate.kane@kane.de', crypt('password123', gen_salt('bf')), now(), now() - interval '4 months', now(), '{"provider":"email","providers":["email"]}', '{}'),
   ('13131313-1313-1313-1313-131313131313', 'garfield.logan@doom.nl', crypt('password123', gen_salt('bf')), now(), now() - interval '3 months', now(), '{"provider":"email","providers":["email"]}', '{}'),
   -- Mock user for development
-  ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'prashant_sridharan@hotmail.com', crypt('password123', gen_salt('bf')), now(), now() - interval '3 months', now(), '{"provider":"email","providers":["email"]}', '{}')
+  ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'dev@supasquad.local', crypt('password123', gen_salt('bf')), now(), now() - interval '3 months', now(), '{"provider":"email","providers":["email"]}', '{}')
 ON CONFLICT (id) DO NOTHING;
 
 -- Create profiles for each user
@@ -50,7 +50,7 @@ VALUES
   ('12121212-1212-1212-1212-121212121212', 'kate.kane@kane.de', 'Kate', 'Kane', 'https://api.dicebear.com/7.x/avataaars/svg?seed=kate', 'Berlin', 'Germany', now() - interval '4 months', now()),
   ('13131313-1313-1313-1313-131313131313', 'garfield.logan@doom.nl', 'Garfield', 'Logan', 'https://api.dicebear.com/7.x/avataaars/svg?seed=garfield', 'Amsterdam', 'Netherlands', now() - interval '3 months', now()),
   -- Mock user for development
-  ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'prashant_sridharan@hotmail.com', 'Prashant', 'Sridharan', 'https://api.dicebear.com/7.x/avataaars/svg?seed=prashant', 'San Francisco', 'USA', now() - interval '3 months', now())
+  ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'dev@supasquad.local', 'Prashant', 'Sridharan', 'https://api.dicebear.com/7.x/avataaars/svg?seed=prashant', 'San Francisco', 'USA', now() - interval '3 months', now())
 ON CONFLICT (id) DO UPDATE SET
   first_name = EXCLUDED.first_name,
   last_name = EXCLUDED.last_name,
@@ -305,7 +305,7 @@ SELECT
   now() - interval '1 month',
   now()
 FROM public.profiles p
-WHERE p.email = 'prashant_sridharan@hotmail.com'
+WHERE p.email = 'dev@supasquad.local'
 ON CONFLICT DO NOTHING;
 
 INSERT INTO public.social_connections (user_id, provider, provider_user_id, provider_username, created_at, updated_at)
@@ -317,7 +317,7 @@ SELECT
   now() - interval '1 month',
   now()
 FROM public.profiles p
-WHERE p.email = 'prashant_sridharan@hotmail.com'
+WHERE p.email = 'dev@supasquad.local'
 ON CONFLICT DO NOTHING;
 
 INSERT INTO public.social_connections (user_id, provider, provider_user_id, provider_username, created_at, updated_at)
@@ -329,7 +329,7 @@ SELECT
   now() - interval '2 weeks',
   now()
 FROM public.profiles p
-WHERE p.email = 'prashant_sridharan@hotmail.com'
+WHERE p.email = 'dev@supasquad.local'
 ON CONFLICT DO NOTHING;
 
 -- Activities for Prashant Sridharan (mock user - varied activity types over 6 months)
@@ -382,7 +382,7 @@ SELECT
   now() - interval '2 days',
   now() - interval '2 days'
 FROM public.profiles p
-WHERE p.email = 'prashant_sridharan@hotmail.com';
+WHERE p.email = 'dev@supasquad.local';
 
 INSERT INTO public.pending_activities (user_id, provider, provider_activity_id, activity_type, title, description, url, suggested_points, status, ingested_at, created_at)
 SELECT
@@ -398,7 +398,7 @@ SELECT
   now() - interval '1 day',
   now() - interval '1 day'
 FROM public.profiles p
-WHERE p.email = 'prashant_sridharan@hotmail.com';
+WHERE p.email = 'dev@supasquad.local';
 
 INSERT INTO public.pending_activities (user_id, provider, provider_activity_id, activity_type, title, description, url, platform, answer_count, suggested_points, status, ingested_at, created_at)
 SELECT
@@ -416,7 +416,7 @@ SELECT
   now() - interval '12 hours',
   now() - interval '12 hours'
 FROM public.profiles p
-WHERE p.email = 'prashant_sridharan@hotmail.com';
+WHERE p.email = 'dev@supasquad.local';
 
 INSERT INTO public.pending_activities (user_id, provider, provider_activity_id, activity_type, title, description, url, suggested_points, status, ingested_at, created_at)
 SELECT
@@ -432,7 +432,7 @@ SELECT
   now() - interval '6 hours',
   now() - interval '6 hours'
 FROM public.profiles p
-WHERE p.email = 'prashant_sridharan@hotmail.com';
+WHERE p.email = 'dev@supasquad.local';
 
 INSERT INTO public.pending_activities (user_id, provider, provider_activity_id, activity_type, title, description, url, suggested_points, status, ingested_at, created_at)
 SELECT
@@ -448,4 +448,4 @@ SELECT
   now() - interval '3 hours',
   now() - interval '3 hours'
 FROM public.profiles p
-WHERE p.email = 'prashant_sridharan@hotmail.com';
+WHERE p.email = 'dev@supasquad.local';

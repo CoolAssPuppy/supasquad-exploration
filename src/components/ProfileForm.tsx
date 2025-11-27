@@ -41,8 +41,6 @@ export function ProfileForm() {
       }
 
       if (isMockAuth) {
-        // For mock auth, just simulate success
-        console.log('Mock profile update:', { firstName, lastName, city, country })
         setMessage({ type: 'success', text: 'Profile updated successfully! (Mock mode)' })
         return
       }
@@ -122,7 +120,6 @@ export function ProfileForm() {
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Avatar */}
           <div className="flex items-center gap-4">
             <Avatar
               src={avatarUrl}
@@ -151,7 +148,6 @@ export function ProfileForm() {
             </div>
           </div>
 
-          {/* Email (read-only) */}
           <Input
             id="email"
             label="Email"
@@ -159,7 +155,6 @@ export function ProfileForm() {
             disabled
           />
 
-          {/* Name fields */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Input
               id="firstName"
@@ -177,7 +172,6 @@ export function ProfileForm() {
             />
           </div>
 
-          {/* Location fields */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Input
               id="city"
@@ -195,7 +189,6 @@ export function ProfileForm() {
             />
           </div>
 
-          {/* Message */}
           {message && (
             <div
               className={`
@@ -218,7 +211,6 @@ export function ProfileForm() {
             </div>
           )}
 
-          {/* Submit button */}
           <Button type="submit" isLoading={isLoading}>
             Save changes
           </Button>

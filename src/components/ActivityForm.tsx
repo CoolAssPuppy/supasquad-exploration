@@ -31,7 +31,6 @@ interface ActivityFormProps {
   initialValues?: ActivityFormInitialValues
   onSuccess?: () => void
   onCancel?: () => void
-  compact?: boolean
   submitLabel?: string
   header?: string
   subheader?: string
@@ -41,7 +40,6 @@ export function ActivityForm({
   initialValues,
   onSuccess,
   onCancel,
-  compact = false,
   submitLabel,
   header = 'Manual submission',
   subheader,
@@ -98,8 +96,6 @@ export function ActivityForm({
       }
 
       if (isMockAuth) {
-        // For mock auth, just simulate success
-        console.log('Mock activity submission:', activityData)
         if (onSuccess) {
           onSuccess()
         } else {
@@ -151,7 +147,6 @@ export function ActivityForm({
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Activity type */}
           <Select
             id="activityType"
             label="Activity type"
@@ -160,7 +155,6 @@ export function ActivityForm({
             onChange={(e) => setActivityType(e.target.value as ActivityType)}
           />
 
-          {/* Title - always required */}
           <Input
             id="title"
             label="Title"
@@ -170,7 +164,6 @@ export function ActivityForm({
             required
           />
 
-          {/* URL - for blog posts, videos, OSS, docs, templates, integrations */}
           {requiredFields.includes('url') && (
             <Input
               id="url"
@@ -183,7 +176,6 @@ export function ActivityForm({
             />
           )}
 
-          {/* Event name - for talks, meetups, workshops */}
           {requiredFields.includes('eventName') && (
             <Input
               id="eventName"
@@ -195,7 +187,6 @@ export function ActivityForm({
             />
           )}
 
-          {/* Event date - for talks, meetups, workshops */}
           {requiredFields.includes('eventDate') && (
             <Input
               id="eventDate"
@@ -207,7 +198,6 @@ export function ActivityForm({
             />
           )}
 
-          {/* Location - for hosted meetups */}
           {requiredFields.includes('location') && (
             <Input
               id="location"
@@ -219,7 +209,6 @@ export function ActivityForm({
             />
           )}
 
-          {/* Attendee count - for meetups, workshops */}
           {requiredFields.includes('attendeeCount') && (
             <Input
               id="attendeeCount"
@@ -233,7 +222,6 @@ export function ActivityForm({
             />
           )}
 
-          {/* Platform - for community answers */}
           {requiredFields.includes('platform') && (
             <Select
               id="platform"
@@ -245,7 +233,6 @@ export function ActivityForm({
             />
           )}
 
-          {/* Answer count - for community answers */}
           {requiredFields.includes('answerCount') && (
             <Input
               id="answerCount"
@@ -259,7 +246,6 @@ export function ActivityForm({
             />
           )}
 
-          {/* Description - for support, mentorship, OSS, docs, templates, integrations */}
           {requiredFields.includes('description') && (
             <div>
               <label
@@ -288,7 +274,6 @@ export function ActivityForm({
             </div>
           )}
 
-          {/* Optional description for other activity types */}
           {!requiredFields.includes('description') && (
             <div>
               <label
@@ -316,7 +301,6 @@ export function ActivityForm({
             </div>
           )}
 
-          {/* Amplification request */}
           <div className="p-4 rounded-lg border border-[var(--border)] bg-[var(--surface)]">
             <div className="flex items-start gap-3">
               <input
@@ -357,14 +341,12 @@ export function ActivityForm({
             )}
           </div>
 
-          {/* Error message */}
           {error && (
             <div className="p-3 bg-[var(--destructive)]/10 border border-[var(--destructive)]/20 rounded-md">
               <p className="text-sm text-[var(--destructive)]">{error}</p>
             </div>
           )}
 
-          {/* Submit button */}
           <div className={`pt-2 ${onCancel ? 'flex gap-2' : ''}`}>
             {onCancel && (
               <Button type="button" variant="outline" onClick={onCancel} className="flex-1">

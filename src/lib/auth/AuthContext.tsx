@@ -6,7 +6,7 @@ import type { User, Session } from '@supabase/supabase-js'
 import type { Profile } from '@/types/database'
 
 // Mock user for development - will be replaced with real Supabase auth
-const MOCK_USER_EMAIL = 'prashant_sridharan@hotmail.com'
+const MOCK_USER_EMAIL = 'dev@supasquad.local'
 const MOCK_USER_ID = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'
 
 interface AuthContextType {

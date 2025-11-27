@@ -230,7 +230,22 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      get_leaderboard: {
+        Args: { limit_count?: number }
+        Returns: {
+          avatar_url: string
+          email: string
+          first_name: string
+          last_name: string
+          rank: number
+          total_points: number
+          user_id: string
+        }[]
+      }
+      get_user_total_points: {
+        Args: { user_uuid: string }
+        Returns: number
+      }
     }
     Enums: {
       activity_type:

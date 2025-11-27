@@ -8,7 +8,6 @@ import { ActivityCard } from '@/components/ActivityCard'
 import { Leaderboard } from '@/components/Leaderboard'
 import { CountryFilter } from '@/components/CountryFilter'
 import type { ActivityWithProfile, LeaderboardEntry, Profile } from '@/types/database'
-import type { RealtimePostgresChangesPayload } from '@supabase/supabase-js'
 
 interface ActivityRow {
   id: string
@@ -206,8 +205,7 @@ export function ActivityFeed() {
           schema: 'public',
           table: 'activities',
         },
-        (payload: RealtimePostgresChangesPayload<ActivityRow>) => {
-          console.log('Realtime update:', payload)
+        () => {
           fetchActivities()
           calculateLeaderboard()
         }
@@ -275,7 +273,6 @@ export function ActivityFeed() {
 
   return (
     <div className="space-y-6">
-      {/* Filter bar */}
       <div className="flex items-center gap-4">
         <CountryFilter />
         {filters.selectedCountries.length > 0 && (
@@ -286,7 +283,6 @@ export function ActivityFeed() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Activity Feed - 2/3 width on large screens */}
         <div className="lg:col-span-2 space-y-4">
           {activities.length === 0 ? (
             <div className="text-center py-12 text-[var(--foreground-lighter)]">
@@ -304,7 +300,6 @@ export function ActivityFeed() {
           )}
         </div>
 
-        {/* Leaderboard - 1/3 width on large screens */}
         <div className="lg:col-span-1">
           <Leaderboard
             entries={leaderboard}

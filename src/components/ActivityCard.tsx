@@ -20,7 +20,6 @@ export function ActivityCard({ activity }: ActivityCardProps) {
     <Card className="hover:border-[var(--border-light)] transition-colors">
       <CardContent className="p-4">
         <div className="flex gap-4">
-          {/* Avatar */}
           <Avatar
             src={activity.profiles.avatar_url}
             alt={displayName}
@@ -28,9 +27,7 @@ export function ActivityCard({ activity }: ActivityCardProps) {
             size="md"
           />
 
-          {/* Content */}
           <div className="flex-1 min-w-0">
-            {/* Header */}
             <div className="flex items-start justify-between gap-2">
               <div>
                 <span className="font-medium text-[var(--foreground)]">
@@ -50,19 +47,16 @@ export function ActivityCard({ activity }: ActivityCardProps) {
               </div>
             </div>
 
-            {/* Title */}
             <h3 className="mt-2 font-medium text-[var(--foreground)]">
               {activity.title}
             </h3>
 
-            {/* Description */}
             {activity.description && (
               <p className="mt-1 text-sm text-[var(--foreground-light)] line-clamp-2">
                 {activity.description}
               </p>
             )}
 
-            {/* Amplification request */}
             {activity.request_amplification && activity.amplification_url && (
               <div className="mt-3 p-2 rounded-md bg-[var(--warning)]/10 border border-[var(--warning)]/20">
                 <a
@@ -87,7 +81,6 @@ export function ActivityCard({ activity }: ActivityCardProps) {
               </div>
             )}
 
-            {/* Meta info */}
             <div className="mt-3 flex items-center gap-4 text-sm text-[var(--foreground-lighter)]">
               <span>{formatRelativeTime(activity.created_at)}</span>
               {activity.url && (
