@@ -1,5 +1,9 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import {
+  decodeBase64,
+  encodeBase64,
+} from 'https://deno.land/std@0.168.0/encoding/base64.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -14,12 +18,15 @@ interface TokenResponse {
   expires_in?: number
 }
 
-const PROVIDER_CONFIGS: Record<Provider, {
-  tokenUrl: string
-  clientIdEnv: string
-  clientSecretEnv: string
-  supportsRefresh: boolean
-}> = {
+const PROVIDER_CONFIGS: Record<
+  Provider,
+  {
+    tokenUrl: string
+    clientIdEnv: string
+    clientSecretEnv: string
+    supportsRefresh: boolean
+  }
+> = {
   discord: {
     tokenUrl: 'https://discord.com/api/oauth2/token',
     clientIdEnv: 'DISCORD_CLIENT_ID',
@@ -36,7 +43,7 @@ const PROVIDER_CONFIGS: Record<Provider, {
     tokenUrl: 'https://github.com/login/oauth/access_token',
     clientIdEnv: 'GITHUB_CLIENT_ID',
     clientSecretEnv: 'GITHUB_CLIENT_SECRET',
-    supportsRefresh: false, // GitHub tokens don't expire by default
+    supportsRefresh: false,
   },
   twitter: {
     tokenUrl: 'https://api.twitter.com/2/oauth2/token',
@@ -46,7 +53,89 @@ const PROVIDER_CONFIGS: Record<Provider, {
   },
 }
 
-async function refreshToken(
+const ALGORITHM = 'AES-GCM'
+const IV_LENGTH = 16
+const AUTH_TAG_LENGTH = 16
+
+function getEncryptionKey(): Uint8Array | null {
+  const key = Deno.env.get('TOKEN_ENCRYPTION_KEY')
+  if (!key) {
+    return null
+  }
+  return decodeBase64(key)
+}
+
+async function decryptToken(encryptedData: string): Promise<string> {
+  const keyData = getEncryptionKey()
+  if (!keyData) {
+    // No encryption key configured, return as-is
+    return encryptedData
+  }
+
+  try {
+    const combined = decodeBase64(encryptedData)
+
+    const iv = combined.slice(0, IV_LENGTH)
+    const authTag = combined.slice(IV_LENGTH, IV_LENGTH + AUTH_TAG_LENGTH)
+    const ciphertext = combined.slice(IV_LENGTH + AUTH_TAG_LENGTH)
+
+    // Combine ciphertext and authTag for WebCrypto API
+    const ciphertextWithTag = new Uint8Array(ciphertext.length + authTag.length)
+    ciphertextWithTag.set(ciphertext)
+    ciphertextWithTag.set(authTag, ciphertext.length)
+
+    const key = await crypto.subtle.importKey('raw', keyData, { name: ALGORITHM }, false, [
+      'decrypt',
+    ])
+
+    const decrypted = await crypto.subtle.decrypt(
+      { name: ALGORITHM, iv, tagLength: AUTH_TAG_LENGTH * 8 },
+      key,
+      ciphertextWithTag
+    )
+
+    return new TextDecoder().decode(decrypted)
+  } catch {
+    // Token might be plaintext (pre-migration), return as-is
+    console.warn('Failed to decrypt token - may be plaintext from before encryption was enabled')
+    return encryptedData
+  }
+}
+
+async function encryptToken(plaintext: string): Promise<string> {
+  const keyData = getEncryptionKey()
+  if (!keyData) {
+    // No encryption key configured, return as-is
+    return plaintext
+  }
+
+  const iv = crypto.getRandomValues(new Uint8Array(IV_LENGTH))
+
+  const key = await crypto.subtle.importKey('raw', keyData, { name: ALGORITHM }, false, ['encrypt'])
+
+  const encoded = new TextEncoder().encode(plaintext)
+
+  const encrypted = await crypto.subtle.encrypt(
+    { name: ALGORITHM, iv, tagLength: AUTH_TAG_LENGTH * 8 },
+    key,
+    encoded
+  )
+
+  // WebCrypto returns ciphertext + authTag combined
+  const encryptedArray = new Uint8Array(encrypted)
+  const ciphertext = encryptedArray.slice(0, -AUTH_TAG_LENGTH)
+  const authTag = encryptedArray.slice(-AUTH_TAG_LENGTH)
+
+  // Combine IV + AuthTag + Ciphertext
+  const combined = new Uint8Array(IV_LENGTH + AUTH_TAG_LENGTH + ciphertext.length)
+  combined.set(iv)
+  combined.set(authTag, IV_LENGTH)
+  combined.set(ciphertext, IV_LENGTH + AUTH_TAG_LENGTH)
+
+  return encodeBase64(combined)
+}
+
+async function refreshProviderToken(
   provider: Provider,
   refreshToken: string
 ): Promise<TokenResponse | null> {
@@ -72,7 +161,6 @@ async function refreshToken(
     'Content-Type': 'application/x-www-form-urlencoded',
   }
 
-  // Different providers have different auth methods
   if (provider === 'twitter') {
     const credentials = btoa(`${clientId}:${clientSecret}`)
     headers['Authorization'] = `Basic ${credentials}`
@@ -101,22 +189,18 @@ async function refreshToken(
 }
 
 serve(async (req) => {
-  // Handle CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
 
   try {
-    // Verify the request is from a trusted source (cron job or authenticated admin)
     const authHeader = req.headers.get('Authorization')
     const expectedKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
 
     if (!authHeader?.includes(expectedKey || '')) {
-      // Allow the request if it has a valid service role key
       console.warn('Refresh tokens called without service role key')
     }
 
-    // Initialize Supabase client with service role
     const supabaseUrl = Deno.env.get('SUPABASE_URL')
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
 
@@ -158,13 +242,22 @@ serve(async (req) => {
       }
 
       try {
-        const newTokens = await refreshToken(provider, connection.refresh_token)
+        // Decrypt the refresh token
+        const decryptedRefreshToken = await decryptToken(connection.refresh_token)
+
+        const newTokens = await refreshProviderToken(provider, decryptedRefreshToken)
 
         if (!newTokens) {
           results.failed++
           results.errors.push(`${provider}:${connection.user_id} - No tokens returned`)
           continue
         }
+
+        // Encrypt the new tokens
+        const encryptedAccessToken = await encryptToken(newTokens.access_token)
+        const encryptedRefreshToken = newTokens.refresh_token
+          ? await encryptToken(newTokens.refresh_token)
+          : connection.refresh_token
 
         const tokenExpiresAt = newTokens.expires_in
           ? new Date(Date.now() + newTokens.expires_in * 1000).toISOString()
@@ -173,8 +266,8 @@ serve(async (req) => {
         const { error: updateError } = await supabase
           .from('social_connections')
           .update({
-            access_token: newTokens.access_token,
-            refresh_token: newTokens.refresh_token || connection.refresh_token,
+            access_token: encryptedAccessToken,
+            refresh_token: encryptedRefreshToken,
             token_expires_at: tokenExpiresAt,
             updated_at: new Date().toISOString(),
           })
@@ -189,33 +282,29 @@ serve(async (req) => {
         }
       } catch (error) {
         results.failed++
-        results.errors.push(`${provider}:${connection.user_id} - ${error.message}`)
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+        results.errors.push(`${provider}:${connection.user_id} - ${errorMessage}`)
       }
     }
 
     console.log('Token refresh complete:', results)
 
-    return new Response(
-      JSON.stringify(results),
-      {
-        headers: {
-          ...corsHeaders,
-          'Content-Type': 'application/json',
-        },
-      }
-    )
+    return new Response(JSON.stringify(results), {
+      headers: {
+        ...corsHeaders,
+        'Content-Type': 'application/json',
+      },
+    })
   } catch (error) {
     console.error('Token refresh error:', error)
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
 
-    return new Response(
-      JSON.stringify({ error: error.message }),
-      {
-        status: 500,
-        headers: {
-          ...corsHeaders,
-          'Content-Type': 'application/json',
-        },
-      }
-    )
+    return new Response(JSON.stringify({ error: errorMessage }), {
+      status: 500,
+      headers: {
+        ...corsHeaders,
+        'Content-Type': 'application/json',
+      },
+    })
   }
 })

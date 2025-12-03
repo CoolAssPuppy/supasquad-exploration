@@ -13,24 +13,64 @@ This guide walks you through setting up OAuth applications for SupaSquad social 
 After creating each OAuth app, add the credentials to your `.env.local` file:
 
 ```bash
-# Discord OAuth
+# OAuth Provider Credentials
 DISCORD_CLIENT_ID=your_discord_client_id
 DISCORD_CLIENT_SECRET=your_discord_client_secret
-
-# LinkedIn OAuth
 LINKEDIN_CLIENT_ID=your_linkedin_client_id
 LINKEDIN_CLIENT_SECRET=your_linkedin_client_secret
-
-# GitHub OAuth
 GITHUB_CLIENT_ID=your_github_client_id
 GITHUB_CLIENT_SECRET=your_github_client_secret
-
-# Twitter/X OAuth
 TWITTER_CLIENT_ID=your_twitter_client_id
 TWITTER_CLIENT_SECRET=your_twitter_client_secret
+
+# Security Keys (REQUIRED for production)
+# Generate with: openssl rand -base64 32
+TOKEN_ENCRYPTION_KEY=your_32_byte_base64_encoded_key
+OAUTH_STATE_SECRET=your_random_secret_string
+
+# App URL
+NEXT_PUBLIC_APP_URL=https://yourdomain.com
 ```
 
 Also add these to your Supabase project's Edge Function secrets.
+
+---
+
+## Security Configuration
+
+### Token Encryption Key
+
+Tokens are encrypted at rest using AES-256-GCM. Generate a 32-byte key:
+
+```bash
+# Generate encryption key
+openssl rand -base64 32
+```
+
+This key must be:
+- Exactly 32 bytes when decoded from base64
+- Kept secret and never committed to version control
+- The same across your app and Edge Functions
+
+### OAuth State Secret
+
+Used for signing and validating OAuth state parameters to prevent CSRF attacks:
+
+```bash
+# Generate a random secret
+openssl rand -hex 32
+```
+
+### Security Features
+
+The OAuth implementation includes:
+
+1. **CSRF Protection**: State parameter is signed with HMAC-SHA256 and validated with a double-submit cookie
+2. **State Expiration**: OAuth requests expire after 5 minutes
+3. **Token Encryption**: Access and refresh tokens are encrypted using AES-256-GCM before storage
+4. **PKCE**: Twitter uses proper S256 PKCE code challenge/verifier
+5. **Token Revocation**: Tokens are revoked at the provider when disconnecting
+6. **Open Redirect Prevention**: Redirect URLs are validated to prevent attacks
 
 ---
 

@@ -1,12 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/utils/supabase/server'
+import { createOAuthState, extractCsrfFromState, setStateCookie } from '@/lib/oauth/state'
+import { generatePkcePair } from '@/lib/oauth/pkce'
 
 type Provider = 'discord' | 'linkedin' | 'github' | 'twitter'
+
+const VALID_PROVIDERS = new Set<Provider>(['discord', 'linkedin', 'github', 'twitter'])
 
 interface ProviderConfig {
   authUrl: string
   scopes: string[]
-  additionalParams?: Record<string, string>
+  usePkce?: boolean
 }
 
 const PROVIDER_CONFIGS: Record<Provider, ProviderConfig> = {
@@ -25,53 +29,112 @@ const PROVIDER_CONFIGS: Record<Provider, ProviderConfig> = {
   twitter: {
     authUrl: 'https://twitter.com/i/oauth2/authorize',
     scopes: ['tweet.read', 'tweet.write', 'users.read', 'offline.access'],
-    additionalParams: {
-      code_challenge_method: 'plain',
-      code_challenge: 'supasquad_challenge', // In production, use a proper PKCE challenge
-    },
+    usePkce: true,
   },
+}
+
+function isValidProvider(provider: string): provider is Provider {
+  return VALID_PROVIDERS.has(provider as Provider)
+}
+
+function isValidRedirectUrl(url: string): boolean {
+  // Only allow relative paths starting with /
+  if (!url.startsWith('/')) {
+    return false
+  }
+  // Prevent protocol-relative URLs and double slashes
+  if (url.startsWith('//')) {
+    return false
+  }
+  // Prevent any URL encoding tricks
+  try {
+    const decoded = decodeURIComponent(url)
+    if (decoded.includes('//') || decoded.includes(':')) {
+      return false
+    }
+  } catch {
+    return false
+  }
+  return true
 }
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams
-  const provider = searchParams.get('provider') as Provider
+  const providerParam = searchParams.get('provider')
+  const redirectParam = searchParams.get('redirect') || '/profile'
 
-  if (!provider || !PROVIDER_CONFIGS[provider]) {
+  // Validate provider
+  if (!providerParam || !isValidProvider(providerParam)) {
     return NextResponse.json(
       { error: 'Invalid or missing provider' },
       { status: 400 }
     )
   }
 
-  // Get the current user
+  const provider = providerParam
+
+  // Validate redirect URL to prevent open redirect
+  if (!isValidRedirectUrl(redirectParam)) {
+    return NextResponse.json(
+      { error: 'Invalid redirect URL' },
+      { status: 400 }
+    )
+  }
+
+  // Verify user is authenticated
   const supabase = await createClient()
-  const { data: { user }, error: userError } = await supabase.auth.getUser()
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser()
 
   if (userError || !user) {
-    return NextResponse.redirect(new URL('/login?error=unauthorized', request.url))
+    const loginUrl = new URL('/login', request.nextUrl.origin)
+    loginUrl.searchParams.set('error', 'unauthorized')
+    loginUrl.searchParams.set('redirect', redirectParam)
+    return NextResponse.redirect(loginUrl)
   }
 
   const config = PROVIDER_CONFIGS[provider]
   const clientId = process.env[`${provider.toUpperCase()}_CLIENT_ID`]
 
   if (!clientId) {
-    return NextResponse.json(
-      { error: `OAuth not configured for ${provider}` },
-      { status: 500 }
-    )
+    console.error(`Missing CLIENT_ID for provider: ${provider}`)
+    const errorUrl = new URL(redirectParam, request.nextUrl.origin)
+    errorUrl.searchParams.set('oauth', 'error')
+    errorUrl.searchParams.set('message', `OAuth not configured for ${provider}`)
+    return NextResponse.redirect(errorUrl)
   }
 
-  // Build the redirect URI
-  const redirectUri = `${process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin}/api/auth/callback/${provider}`
+  // Build redirect URI
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin
+  const redirectUri = `${appUrl}/api/auth/callback/${provider}`
 
-  // Create state with user info and CSRF token
-  const state = btoa(JSON.stringify({
+  // Generate PKCE if required
+  let codeVerifier: string | undefined
+  let codeChallenge: string | undefined
+
+  if (config.usePkce) {
+    const pkce = generatePkcePair()
+    codeVerifier = pkce.verifier
+    codeChallenge = pkce.challenge
+  }
+
+  // Create signed state with CSRF token
+  const state = createOAuthState({
     userId: user.id,
-    redirectUrl: searchParams.get('redirect') || '/profile',
-    csrf: crypto.randomUUID(),
-  }))
+    redirectUrl: redirectParam,
+    provider,
+    codeVerifier, // Store verifier in state for callback
+  })
 
-  // Build the authorization URL
+  // Extract CSRF and store in cookie for double-submit validation
+  const csrf = extractCsrfFromState(state)
+  if (csrf) {
+    await setStateCookie(csrf)
+  }
+
+  // Build authorization URL
   const authUrl = new URL(config.authUrl)
   authUrl.searchParams.set('client_id', clientId)
   authUrl.searchParams.set('redirect_uri', redirectUri)
@@ -79,11 +142,10 @@ export async function GET(request: NextRequest) {
   authUrl.searchParams.set('scope', config.scopes.join(' '))
   authUrl.searchParams.set('state', state)
 
-  // Add provider-specific params
-  if (config.additionalParams) {
-    for (const [key, value] of Object.entries(config.additionalParams)) {
-      authUrl.searchParams.set(key, value)
-    }
+  // Add PKCE parameters if required
+  if (config.usePkce && codeChallenge) {
+    authUrl.searchParams.set('code_challenge', codeChallenge)
+    authUrl.searchParams.set('code_challenge_method', 'S256')
   }
 
   return NextResponse.redirect(authUrl.toString())

@@ -1,4 +1,6 @@
 import { createClient } from '@/utils/supabase/server'
+import { parseOAuthState, validateCsrf } from '@/lib/oauth/state'
+import { encryptTokenSafe } from '@/lib/crypto/tokens'
 
 type Provider = 'discord' | 'linkedin' | 'github' | 'twitter'
 
@@ -65,7 +67,8 @@ const PROVIDER_CONFIGS: Record<Provider, ProviderConfig> = {
 async function exchangeCodeForTokens(
   provider: Provider,
   code: string,
-  redirectUri: string
+  redirectUri: string,
+  codeVerifier?: string
 ): Promise<TokenResponse> {
   const config = PROVIDER_CONFIGS[provider]
   const clientId = process.env[`${provider.toUpperCase()}_CLIENT_ID`]
@@ -92,7 +95,10 @@ async function exchangeCodeForTokens(
   } else if (provider === 'twitter') {
     const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString('base64')
     headers['Authorization'] = `Basic ${credentials}`
-    params.set('code_verifier', 'supasquad_challenge') // Match the code_challenge from connect
+    // Use the code verifier from PKCE
+    if (codeVerifier) {
+      params.set('code_verifier', codeVerifier)
+    }
   } else {
     params.set('client_id', clientId)
     params.set('client_secret', clientSecret)
@@ -106,7 +112,8 @@ async function exchangeCodeForTokens(
 
   if (!response.ok) {
     const error = await response.text()
-    throw new Error(`Token exchange failed: ${error}`)
+    console.error(`Token exchange failed for ${provider}:`, response.status, error)
+    throw new Error(`Token exchange failed: ${response.status}`)
   }
 
   return response.json()
@@ -116,7 +123,7 @@ async function fetchUserInfo(provider: Provider, accessToken: string): Promise<U
   const config = PROVIDER_CONFIGS[provider]
 
   const headers: Record<string, string> = {
-    'Authorization': `Bearer ${accessToken}`,
+    Authorization: `Bearer ${accessToken}`,
   }
 
   if (provider === 'github') {
@@ -128,7 +135,8 @@ async function fetchUserInfo(provider: Provider, accessToken: string): Promise<U
 
   if (!response.ok) {
     const error = await response.text()
-    throw new Error(`Failed to fetch user info: ${error}`)
+    console.error(`Failed to fetch user info for ${provider}:`, response.status, error)
+    throw new Error(`Failed to fetch user info: ${response.status}`)
   }
 
   const data = await response.json()
@@ -138,7 +146,37 @@ async function fetchUserInfo(provider: Provider, accessToken: string): Promise<U
 export interface OAuthCallbackResult {
   success: boolean
   error?: string
+  errorCode?: string
   redirectUrl: string
+}
+
+type OAuthErrorCode =
+  | 'invalid_state'
+  | 'expired_state'
+  | 'csrf_mismatch'
+  | 'token_exchange_failed'
+  | 'user_info_failed'
+  | 'database_error'
+  | 'provider_mismatch'
+  | 'unknown'
+
+function createErrorResult(
+  errorCode: OAuthErrorCode,
+  message: string,
+  origin: string,
+  redirectUrl = '/profile'
+): OAuthCallbackResult {
+  const errorUrl = new URL(redirectUrl, origin)
+  errorUrl.searchParams.set('oauth', 'error')
+  errorUrl.searchParams.set('code', errorCode)
+  errorUrl.searchParams.set('message', message)
+
+  return {
+    success: false,
+    error: message,
+    errorCode,
+    redirectUrl: errorUrl.toString(),
+  }
 }
 
 export async function handleOAuthCallback(
@@ -147,18 +185,44 @@ export async function handleOAuthCallback(
   state: string,
   origin: string
 ): Promise<OAuthCallbackResult> {
+  // Parse and validate state
+  const statePayload = parseOAuthState(state)
+
+  if (!statePayload) {
+    return createErrorResult(
+      'invalid_state',
+      'Invalid or expired authorization request. Please try again.',
+      origin
+    )
+  }
+
+  // Verify the provider matches
+  if (statePayload.provider !== provider) {
+    return createErrorResult(
+      'provider_mismatch',
+      'Provider mismatch in authorization request.',
+      origin,
+      statePayload.redirectUrl
+    )
+  }
+
+  // Validate CSRF token
+  const csrfValid = await validateCsrf(statePayload)
+  if (!csrfValid) {
+    return createErrorResult(
+      'csrf_mismatch',
+      'Security validation failed. Please try again.',
+      origin,
+      statePayload.redirectUrl
+    )
+  }
+
+  const { userId, redirectUrl, codeVerifier } = statePayload
+
   try {
-    // Decode state
-    const stateData = JSON.parse(Buffer.from(state, 'base64').toString())
-    const { userId, redirectUrl } = stateData
-
-    if (!userId) {
-      throw new Error('Missing user ID in state')
-    }
-
     // Exchange code for tokens
     const callbackUri = `${origin}/api/auth/callback/${provider}`
-    const tokens = await exchangeCodeForTokens(provider, code, callbackUri)
+    const tokens = await exchangeCodeForTokens(provider, code, callbackUri, codeVerifier)
 
     // Fetch user info
     const userInfo = await fetchUserInfo(provider, tokens.access_token)
@@ -166,6 +230,12 @@ export async function handleOAuthCallback(
     // Calculate token expiration
     const tokenExpiresAt = tokens.expires_in
       ? new Date(Date.now() + tokens.expires_in * 1000).toISOString()
+      : null
+
+    // Encrypt tokens before storage
+    const encryptedAccessToken = encryptTokenSafe(tokens.access_token)
+    const encryptedRefreshToken = tokens.refresh_token
+      ? encryptTokenSafe(tokens.refresh_token)
       : null
 
     // Save to database
@@ -186,32 +256,42 @@ export async function handleOAuthCallback(
         .update({
           provider_user_id: userInfo.id,
           provider_username: userInfo.username || null,
-          access_token: tokens.access_token,
-          refresh_token: tokens.refresh_token || null,
+          access_token: encryptedAccessToken,
+          refresh_token: encryptedRefreshToken,
           token_expires_at: tokenExpiresAt,
           updated_at: new Date().toISOString(),
         })
         .eq('id', existing.id)
 
       if (updateError) {
-        throw new Error(`Failed to update connection: ${updateError.message}`)
+        console.error(`Failed to update connection for ${provider}:`, updateError)
+        return createErrorResult(
+          'database_error',
+          'Failed to update connection. Please try again.',
+          origin,
+          redirectUrl
+        )
       }
     } else {
       // Insert new connection
-      const { error: insertError } = await supabase
-        .from('social_connections')
-        .insert({
-          user_id: userId,
-          provider,
-          provider_user_id: userInfo.id,
-          provider_username: userInfo.username || null,
-          access_token: tokens.access_token,
-          refresh_token: tokens.refresh_token || null,
-          token_expires_at: tokenExpiresAt,
-        })
+      const { error: insertError } = await supabase.from('social_connections').insert({
+        user_id: userId,
+        provider,
+        provider_user_id: userInfo.id,
+        provider_username: userInfo.username || null,
+        access_token: encryptedAccessToken,
+        refresh_token: encryptedRefreshToken,
+        token_expires_at: tokenExpiresAt,
+      })
 
       if (insertError) {
-        throw new Error(`Failed to save connection: ${insertError.message}`)
+        console.error(`Failed to save connection for ${provider}:`, insertError)
+        return createErrorResult(
+          'database_error',
+          'Failed to save connection. Please try again.',
+          origin,
+          redirectUrl
+        )
       }
     }
 
@@ -226,14 +306,17 @@ export async function handleOAuthCallback(
   } catch (error) {
     console.error(`OAuth callback error for ${provider}:`, error)
 
-    const errorUrl = new URL('/profile', origin)
-    errorUrl.searchParams.set('oauth', 'error')
-    errorUrl.searchParams.set('message', error instanceof Error ? error.message : 'Unknown error')
+    const message =
+      error instanceof Error ? error.message : 'An unexpected error occurred. Please try again.'
 
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
-      redirectUrl: errorUrl.toString(),
+    // Determine error type from message
+    let errorCode: OAuthErrorCode = 'unknown'
+    if (message.includes('Token exchange')) {
+      errorCode = 'token_exchange_failed'
+    } else if (message.includes('user info')) {
+      errorCode = 'user_info_failed'
     }
+
+    return createErrorResult(errorCode, message, origin, redirectUrl)
   }
 }
