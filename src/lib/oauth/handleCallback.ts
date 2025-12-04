@@ -93,9 +93,10 @@ async function exchangeCodeForTokens(
     params.set('client_id', clientId)
     params.set('client_secret', clientSecret)
   } else if (provider === 'twitter') {
+    // Twitter OAuth 2.0 with PKCE requires both Basic auth AND client_id in body
     const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString('base64')
     headers['Authorization'] = `Basic ${credentials}`
-    // Use the code verifier from PKCE
+    params.set('client_id', clientId)
     if (codeVerifier) {
       params.set('code_verifier', codeVerifier)
     }
@@ -224,7 +225,10 @@ export async function handleOAuthCallback(
     const codeVerifier = await getAndClearPkceVerifierCookie()
 
     // Exchange code for tokens
-    const callbackUri = `${origin}/api/auth/callback/${provider}`
+    // IMPORTANT: Use NEXT_PUBLIC_APP_URL to match the redirect_uri from authorization
+    // The origin from request may differ in production (proxy, load balancer, etc.)
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || origin
+    const callbackUri = `${appUrl}/api/auth/callback/${provider}`
     const tokens = await exchangeCodeForTokens(provider, code, callbackUri, codeVerifier || undefined)
 
     // Fetch user info
