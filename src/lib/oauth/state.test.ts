@@ -6,6 +6,8 @@ import {
   setStateCookie,
   getAndClearStateCookie,
   validateCsrf,
+  setPkceVerifierCookie,
+  getAndClearPkceVerifierCookie,
 } from './state'
 
 // Mock the cookies module
@@ -80,18 +82,18 @@ describe('OAuth state management', () => {
       expect(parsed?.exp).toBeLessThanOrEqual(afterCreate + fiveMinutes + 100)
     })
 
-    it('should include optional codeVerifier for PKCE', () => {
+    it('should not include codeVerifier in state (now stored in cookie)', () => {
       const payload = {
         userId: 'user-123',
         redirectUrl: '/profile',
         provider: 'twitter' as const,
-        codeVerifier: 'pkce-code-verifier-value',
       }
 
       const state = createOAuthState(payload)
       const parsed = parseOAuthState(state)
 
-      expect(parsed?.codeVerifier).toBe('pkce-code-verifier-value')
+      // codeVerifier should not be in the state - it's stored in HttpOnly cookie now
+      expect(parsed).not.toHaveProperty('codeVerifier')
     })
 
     it('should generate unique CSRF tokens for each state', () => {
@@ -452,6 +454,57 @@ describe('OAuth state management', () => {
         const result = await validateCsrf(statePayload)
 
         expect(result).toBe(false)
+      })
+    })
+
+    describe('setPkceVerifierCookie', () => {
+      it('should set PKCE verifier cookie with correct options', async () => {
+        await setPkceVerifierCookie('test-pkce-verifier')
+
+        expect(mockCookieSet).toHaveBeenCalledWith(
+          'oauth_pkce_verifier',
+          'test-pkce-verifier',
+          expect.objectContaining({
+            httpOnly: true,
+            sameSite: 'lax',
+            maxAge: 600,
+            path: '/',
+          })
+        )
+      })
+    })
+
+    describe('getAndClearPkceVerifierCookie', () => {
+      it('should return verifier value when cookie exists', async () => {
+        mockCookieGet.mockReturnValue({ value: 'stored-pkce-verifier' })
+
+        const result = await getAndClearPkceVerifierCookie()
+
+        expect(result).toBe('stored-pkce-verifier')
+      })
+
+      it('should delete cookie after reading', async () => {
+        mockCookieGet.mockReturnValue({ value: 'stored-pkce-verifier' })
+
+        await getAndClearPkceVerifierCookie()
+
+        expect(mockCookieDelete).toHaveBeenCalledWith('oauth_pkce_verifier')
+      })
+
+      it('should return null when cookie does not exist', async () => {
+        mockCookieGet.mockReturnValue(undefined)
+
+        const result = await getAndClearPkceVerifierCookie()
+
+        expect(result).toBeNull()
+      })
+
+      it('should not delete cookie when it does not exist', async () => {
+        mockCookieGet.mockReturnValue(undefined)
+
+        await getAndClearPkceVerifierCookie()
+
+        expect(mockCookieDelete).not.toHaveBeenCalled()
       })
     })
   })

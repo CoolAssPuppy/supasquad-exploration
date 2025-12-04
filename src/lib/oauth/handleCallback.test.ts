@@ -6,9 +6,11 @@ const mockFetch = vi.fn()
 vi.stubGlobal('fetch', mockFetch)
 
 // Mock the state module
+const mockGetAndClearPkceVerifierCookie = vi.fn()
 vi.mock('@/lib/oauth/state', () => ({
   parseOAuthState: vi.fn(),
   validateCsrf: vi.fn(),
+  getAndClearPkceVerifierCookie: () => mockGetAndClearPkceVerifierCookie(),
 }))
 
 // Mock the crypto module
@@ -81,6 +83,9 @@ describe('OAuth callback handler', () => {
 
     mockFetch.mockReset()
     mockSupabaseClient.from.mockReset()
+    mockGetAndClearPkceVerifierCookie.mockReset()
+    // Default to null for non-PKCE flows
+    mockGetAndClearPkceVerifierCookie.mockResolvedValue(null)
   })
 
   afterEach(() => {
@@ -339,10 +344,11 @@ describe('OAuth callback handler', () => {
       mockedParseOAuthState.mockReturnValue(
         createValidStatePayload({
           provider: 'twitter',
-          codeVerifier: 'pkce-verifier-123',
         })
       )
       mockedValidateCsrf.mockResolvedValue(true)
+      // PKCE verifier comes from cookie now, not state
+      mockGetAndClearPkceVerifierCookie.mockResolvedValue('pkce-verifier-123')
 
       // Token exchange succeeds
       mockFetch.mockResolvedValueOnce({
@@ -379,7 +385,7 @@ describe('OAuth callback handler', () => {
       expect(tokenCall[0]).toBe('https://api.twitter.com/2/oauth2/token')
       expect(tokenCall[1].headers.Authorization).toMatch(/^Basic /)
 
-      // Verify code_verifier was included
+      // Verify code_verifier was included (from cookie)
       expect(tokenCall[1].body).toContain('code_verifier=pkce-verifier-123')
     })
 

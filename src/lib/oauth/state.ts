@@ -2,6 +2,7 @@ import { randomBytes, createHmac } from 'crypto'
 import { cookies } from 'next/headers'
 
 const STATE_COOKIE_NAME = 'oauth_state'
+const PKCE_COOKIE_NAME = 'oauth_pkce_verifier'
 const STATE_EXPIRATION_MS = 5 * 60 * 1000 // 5 minutes
 const COOKIE_MAX_AGE = 600 // 10 minutes (slightly longer than state expiration)
 
@@ -11,7 +12,7 @@ interface OAuthStatePayload {
   provider: string
   csrf: string
   exp: number
-  codeVerifier?: string // For PKCE
+  // Note: PKCE codeVerifier is now stored in an HttpOnly cookie for security
 }
 
 function getSigningKey(): string {
@@ -163,4 +164,33 @@ export function extractCsrfFromState(state: string): string | null {
   } catch {
     return null
   }
+}
+
+/**
+ * Stores PKCE code verifier in an HttpOnly cookie
+ * More secure than passing in state URL parameter
+ */
+export async function setPkceVerifierCookie(verifier: string): Promise<void> {
+  const cookieStore = await cookies()
+  cookieStore.set(PKCE_COOKIE_NAME, verifier, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    maxAge: COOKIE_MAX_AGE,
+    path: '/',
+  })
+}
+
+/**
+ * Retrieves and clears the PKCE verifier cookie
+ */
+export async function getAndClearPkceVerifierCookie(): Promise<string | null> {
+  const cookieStore = await cookies()
+  const verifier = cookieStore.get(PKCE_COOKIE_NAME)?.value || null
+
+  if (verifier) {
+    cookieStore.delete(PKCE_COOKIE_NAME)
+  }
+
+  return verifier
 }

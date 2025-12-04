@@ -192,9 +192,10 @@ describe('Safe encryption functions (with fallback)', () => {
   describe('when encryption key is not configured (development fallback)', () => {
     beforeEach(() => {
       vi.stubEnv('TOKEN_ENCRYPTION_KEY', '')
+      vi.stubEnv('NODE_ENV', 'development')
     })
 
-    it('should return plaintext when encrypting without key', () => {
+    it('should return plaintext when encrypting without key in development', () => {
       const token = 'plaintext-token'
 
       const result = encryptTokenSafe(token)
@@ -208,6 +209,21 @@ describe('Safe encryption functions (with fallback)', () => {
       const result = decryptTokenSafe(data)
 
       expect(result).toBe(data)
+    })
+  })
+
+  describe('when encryption key is not configured (production enforcement)', () => {
+    beforeEach(() => {
+      vi.stubEnv('TOKEN_ENCRYPTION_KEY', '')
+      vi.stubEnv('NODE_ENV', 'production')
+    })
+
+    it('should throw error when encrypting without key in production', () => {
+      const token = 'plaintext-token'
+
+      expect(() => encryptTokenSafe(token)).toThrow(
+        'TOKEN_ENCRYPTION_KEY is required in production'
+      )
     })
   })
 

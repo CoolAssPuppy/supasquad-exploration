@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/utils/supabase/server'
-import { createOAuthState, extractCsrfFromState, setStateCookie } from '@/lib/oauth/state'
+import {
+  createOAuthState,
+  extractCsrfFromState,
+  setStateCookie,
+  setPkceVerifierCookie,
+} from '@/lib/oauth/state'
 import { generatePkcePair } from '@/lib/oauth/pkce'
 
 type Provider = 'discord' | 'linkedin' | 'github' | 'twitter'
@@ -111,21 +116,20 @@ export async function GET(request: NextRequest) {
   const redirectUri = `${appUrl}/api/auth/callback/${provider}`
 
   // Generate PKCE if required
-  let codeVerifier: string | undefined
   let codeChallenge: string | undefined
 
   if (config.usePkce) {
     const pkce = generatePkcePair()
-    codeVerifier = pkce.verifier
     codeChallenge = pkce.challenge
+    // Store verifier in HttpOnly cookie (more secure than state URL)
+    await setPkceVerifierCookie(pkce.verifier)
   }
 
-  // Create signed state with CSRF token
+  // Create signed state with CSRF token (no longer includes codeVerifier)
   const state = createOAuthState({
     userId: user.id,
     redirectUrl: redirectParam,
     provider,
-    codeVerifier, // Store verifier in state for callback
   })
 
   // Extract CSRF and store in cookie for double-submit validation

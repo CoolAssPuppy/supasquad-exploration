@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import { useSearchParams, useRouter, usePathname } from 'next/navigation'
 import { Card, CardHeader, CardContent } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Dialog } from '@/components/ui/Dialog'
@@ -9,6 +10,23 @@ import { useAuth } from '@/lib/auth/AuthContext'
 import type { SocialConnection } from '@/types/database'
 
 type Provider = 'discord' | 'linkedin' | 'github' | 'twitter'
+
+interface OAuthFeedback {
+  type: 'success' | 'error'
+  message: string
+  provider?: string
+}
+
+const ERROR_MESSAGES: Record<string, string> = {
+  invalid_state: 'Your session expired. Please try connecting again.',
+  expired_state: 'Your authorization request expired. Please try again.',
+  csrf_mismatch: 'Security validation failed. Please try again.',
+  token_exchange_failed: 'Failed to connect to the provider. Please try again.',
+  user_info_failed: 'Could not retrieve your account information. Please try again.',
+  database_error: 'Failed to save your connection. Please try again.',
+  provider_mismatch: 'Provider mismatch detected. Please try again.',
+  unknown: 'An unexpected error occurred. Please try again.',
+}
 
 interface SocialConfig {
   provider: Provider
@@ -92,6 +110,9 @@ function isTokenExpired(expiresAt: string | null): boolean {
 export function SocialButtons() {
   const { user, isMockAuth } = useAuth()
   const supabase = createClient()
+  const searchParams = useSearchParams()
+  const router = useRouter()
+  const pathname = usePathname()
   const [connections, setConnections] = useState<SocialConnection[]>([])
   const [loading, setLoading] = useState<Provider | null>(null)
   const [disconnectDialog, setDisconnectDialog] = useState<{
@@ -100,6 +121,51 @@ export function SocialButtons() {
     label: string
   }>({ isOpen: false, provider: null, label: '' })
   const [error, setError] = useState<string | null>(null)
+  const [feedback, setFeedback] = useState<OAuthFeedback | null>(null)
+
+  // Handle OAuth callback params
+  useEffect(() => {
+    const oauthStatus = searchParams.get('oauth')
+    const provider = searchParams.get('provider')
+    const errorCode = searchParams.get('code')
+    const errorMessage = searchParams.get('message')
+
+    if (oauthStatus === 'success' && provider) {
+      const providerLabel = socialConfigs.find((c) => c.provider === provider)?.label || provider
+      setFeedback({
+        type: 'success',
+        message: `Successfully connected to ${providerLabel}!`,
+        provider,
+      })
+    } else if (oauthStatus === 'error') {
+      const message = errorCode
+        ? ERROR_MESSAGES[errorCode] || errorMessage || ERROR_MESSAGES.unknown
+        : errorMessage || ERROR_MESSAGES.unknown
+      setFeedback({
+        type: 'error',
+        message,
+        provider: provider || undefined,
+      })
+    }
+
+    // Clear URL params after reading
+    if (oauthStatus) {
+      const newUrl = new URL(window.location.href)
+      newUrl.searchParams.delete('oauth')
+      newUrl.searchParams.delete('provider')
+      newUrl.searchParams.delete('code')
+      newUrl.searchParams.delete('message')
+      router.replace(newUrl.pathname + newUrl.search, { scroll: false })
+    }
+  }, [searchParams, router, pathname])
+
+  // Auto-dismiss success feedback after 5 seconds
+  useEffect(() => {
+    if (feedback?.type === 'success') {
+      const timer = setTimeout(() => setFeedback(null), 5000)
+      return () => clearTimeout(timer)
+    }
+  }, [feedback])
 
   const fetchConnections = useCallback(async () => {
     if (!user) return
@@ -197,6 +263,33 @@ export function SocialButtons() {
           </p>
         </CardHeader>
         <CardContent>
+          {/* OAuth feedback from callback */}
+          {feedback && (
+            <div
+              className={`mb-4 p-3 rounded-md text-sm flex items-center justify-between ${
+                feedback.type === 'success'
+                  ? 'bg-[var(--success)]/10 border border-[var(--success)]/20 text-[var(--success)]'
+                  : 'bg-[var(--destructive)]/10 border border-[var(--destructive)]/20 text-[var(--destructive)]'
+              }`}
+            >
+              <span>{feedback.message}</span>
+              <button
+                onClick={() => setFeedback(null)}
+                className="ml-2 p-1 hover:opacity-70"
+                aria-label="Dismiss"
+              >
+                <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
+                  <path
+                    fillRule="evenodd"
+                    d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+              </button>
+            </div>
+          )}
+
+          {/* Disconnect error */}
           {error && (
             <div className="mb-4 p-3 rounded-md bg-[var(--destructive)]/10 border border-[var(--destructive)]/20 text-[var(--destructive)] text-sm">
               {error}

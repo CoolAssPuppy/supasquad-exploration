@@ -93,12 +93,19 @@ export function verifySignature(data: string, signature: string): boolean {
 }
 
 /**
- * Encrypts token only if encryption key is available (production)
- * Falls back to plaintext in development if key is not set
+ * Encrypts token with production enforcement
+ * In production: Throws if encryption key is not set
+ * In development: Falls back to plaintext with warning
  */
 export function encryptTokenSafe(plaintext: string): string {
   if (!process.env.TOKEN_ENCRYPTION_KEY) {
-    console.warn('TOKEN_ENCRYPTION_KEY not set - tokens will be stored unencrypted')
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error(
+        'TOKEN_ENCRYPTION_KEY is required in production. ' +
+          'Generate one with: openssl rand -base64 32'
+      )
+    }
+    console.warn('[DEV] TOKEN_ENCRYPTION_KEY not set - tokens will be stored unencrypted')
     return plaintext
   }
   return encryptToken(plaintext)

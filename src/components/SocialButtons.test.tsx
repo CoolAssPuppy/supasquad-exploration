@@ -10,6 +10,19 @@ vi.mock('next/image', () => ({
   ),
 }))
 
+// Mock next/navigation
+const mockRouterReplace = vi.fn()
+vi.mock('next/navigation', () => ({
+  useSearchParams: () => ({
+    get: vi.fn(() => null),
+  }),
+  useRouter: () => ({
+    replace: mockRouterReplace,
+    push: vi.fn(),
+  }),
+  usePathname: () => '/profile',
+}))
+
 // Mock fetch
 const mockFetch = vi.fn()
 vi.stubGlobal('fetch', mockFetch)

@@ -1,5 +1,5 @@
 import { createClient } from '@/utils/supabase/server'
-import { parseOAuthState, validateCsrf } from '@/lib/oauth/state'
+import { parseOAuthState, validateCsrf, getAndClearPkceVerifierCookie } from '@/lib/oauth/state'
 import { encryptTokenSafe } from '@/lib/crypto/tokens'
 
 type Provider = 'discord' | 'linkedin' | 'github' | 'twitter'
@@ -217,12 +217,15 @@ export async function handleOAuthCallback(
     )
   }
 
-  const { userId, redirectUrl, codeVerifier } = statePayload
+  const { userId, redirectUrl } = statePayload
 
   try {
+    // Get PKCE verifier from cookie (if this is a Twitter OAuth flow)
+    const codeVerifier = await getAndClearPkceVerifierCookie()
+
     // Exchange code for tokens
     const callbackUri = `${origin}/api/auth/callback/${provider}`
-    const tokens = await exchangeCodeForTokens(provider, code, callbackUri, codeVerifier)
+    const tokens = await exchangeCodeForTokens(provider, code, callbackUri, codeVerifier || undefined)
 
     // Fetch user info
     const userInfo = await fetchUserInfo(provider, tokens.access_token)
